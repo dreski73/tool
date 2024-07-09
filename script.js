@@ -9,6 +9,40 @@ canvas.height = window.innerHeight;
 const panelAspectRatio = 100 / 150; // Width to height ratio
 let panelWidth, panelHeight, panelX, panelY;
 
+const MAX_HISTORY = 50;
+let history = [];
+let historyIndex = -1;
+
+function saveState() {
+    const state = JSON.stringify(layers);
+    if (historyIndex < history.length - 1) {
+        history = history.slice(0, historyIndex + 1);
+    }
+    history.push(state);
+    if (history.length > MAX_HISTORY) {
+        history.shift();
+    }
+    historyIndex = history.length - 1;
+}
+
+function undo() {
+    if (historyIndex > 0) {
+        historyIndex--;
+        layers = JSON.parse(history[historyIndex]);
+        updateLayerList();
+        redrawCanvas();
+    }
+}
+
+function redo() {
+    if (historyIndex < history.length - 1) {
+        historyIndex++;
+        layers = JSON.parse(history[historyIndex]);
+        updateLayerList();
+        redrawCanvas();
+    }
+}
+
 function updatePanelSize() {
     if (canvas.width / canvas.height > panelAspectRatio) {
         panelHeight = canvas.height * 0.8;
@@ -48,6 +82,19 @@ const colorPalette = [
     { name: 'white', hex: 'white' }
 
 ];
+
+// Function to safely add event listeners
+function addShapeButtonListeners() {
+    const shapes = ['rectangle', 'circle', 'triangle'];
+    shapes.forEach(shape => {
+        const button = document.getElementById(`${shape}Button`);
+        if (button) {
+            button.addEventListener('click', () => createShapeLayer(shape));
+        } else {
+            console.warn(`${shape}Button not found in the DOM`);
+        }
+    });
+}
 
 // Layer system
 let layers = [
@@ -147,6 +194,8 @@ function drawPanel() {
                 drawLines(layer);
             } else if (layer.type === 'text') {
                 drawText(layer);
+            } else if (layer.type === 'shape') {
+                drawShape(layer);
             }
         }
     });
@@ -157,6 +206,66 @@ function drawPanel() {
     ctx.strokeStyle = '#000000';
     ctx.lineWidth = 2;
     ctx.strokeRect(panelX, panelY, panelWidth, panelHeight);
+}
+
+function drawShape(layer) {
+    ctx.save();
+    ctx.translate(panelX + layer.x, panelY + layer.y);
+    ctx.rotate(layer.rotation);
+
+    ctx.fillStyle = layer.color;
+    if (layer.fillPattern === 'solid') {
+        // Use the current fillStyle
+    } else if (layer.fillPattern === 'stripes') {
+        const pattern = ctx.createPattern(createStripesPattern(), 'repeat');
+        ctx.fillStyle = pattern;
+    } else if (layer.fillPattern === 'dots') {
+        const pattern = ctx.createPattern(createDotsPattern(), 'repeat');
+        ctx.fillStyle = pattern;
+    }
+
+    if (layer.shapeType === 'rectangle') {
+        ctx.fillRect(-layer.width / 2, -layer.height / 2, layer.width, layer.height);
+    } else if (layer.shapeType === 'circle') {
+        ctx.beginPath();
+        ctx.arc(0, 0, layer.width / 2, 0, Math.PI * 2);
+        ctx.fill();
+    } else if (layer.shapeType === 'triangle') {
+        ctx.beginPath();
+        ctx.moveTo(0, -layer.height / 2);
+        ctx.lineTo(layer.width / 2, layer.height / 2);
+        ctx.lineTo(-layer.width / 2, layer.height / 2);
+        ctx.closePath();
+        ctx.fill();
+    }
+
+    ctx.restore();
+}
+
+function createStripesPattern() {
+    const patternCanvas = document.createElement('canvas');
+    patternCanvas.width = 10;
+    patternCanvas.height = 10;
+    const patternCtx = patternCanvas.getContext('2d');
+    patternCtx.strokeStyle = 'black';
+    patternCtx.lineWidth = 2;
+    patternCtx.beginPath();
+    patternCtx.moveTo(0, 0);
+    patternCtx.lineTo(10, 10);
+    patternCtx.stroke();
+    return patternCanvas;
+}
+
+function createDotsPattern() {
+    const patternCanvas = document.createElement('canvas');
+    patternCanvas.width = 10;
+    patternCanvas.height = 10;
+    const patternCtx = patternCanvas.getContext('2d');
+    patternCtx.fillStyle = 'black';
+    patternCtx.beginPath();
+    patternCtx.arc(5, 5, 2, 0, Math.PI * 2);
+    patternCtx.fill();
+    return patternCanvas;
 }
 
 // Function to draw lines
@@ -231,6 +340,27 @@ function drawText(layer) {
     }
     
     ctx.restore();
+}
+
+function createShapeLayer(type) {
+    const newLayer = {
+        type: 'shape',
+        shapeType: type,
+        color: colorPalette[Math.floor(Math.random() * colorPalette.length)].hex,
+        x: panelWidth / 2,
+        y: panelHeight / 2,
+        width: 100,
+        height: 100,
+        rotation: 0,
+        fillPattern: 'solid',
+        visible: true
+    };
+    layers.push(newLayer);
+    currentLayerIndex = layers.length - 1;
+    selectedLayer = newLayer;
+    updateLayerList();
+    redrawCanvas();
+    saveState();
 }
 
 // Function to create a new layer
@@ -369,6 +499,16 @@ function updateLayerList() {
                 deleteLayer(index);
             });
             controlsContainer.appendChild(deleteButton);
+
+            // Add drag handle
+            const dragHandle = document.createElement('span');
+            dragHandle.textContent = '☰';
+            dragHandle.className = 'drag-handle';
+            dragHandle.draggable = true;
+            dragHandle.addEventListener('dragstart', (e) => {
+                e.dataTransfer.setData('text/plain', index);
+            });
+            controlsContainer.appendChild(dragHandle);
         }
 
         const visibilityToggle = document.createElement('button');
@@ -385,8 +525,26 @@ function updateLayerList() {
         layerItem.appendChild(controlsContainer);
         layerItem.addEventListener('click', () => selectLayer(index));
         
+        // Add drag and drop event listeners
+        layerItem.addEventListener('dragover', (e) => {
+            e.preventDefault();
+        });
+        layerItem.addEventListener('drop', (e) => {
+            e.preventDefault();
+            const oldIndex = parseInt(e.dataTransfer.getData('text/plain'));
+            reorderLayers(oldIndex, index);
+        });
+        
         layerListElement.appendChild(layerItem);
     });
+}
+
+function reorderLayers(oldIndex, newIndex) {
+    if (oldIndex < 1 || oldIndex >= layers.length || newIndex < 1 || newIndex >= layers.length) return;
+    const [removed] = layers.splice(oldIndex, 1);
+    layers.splice(newIndex, 0, removed);
+    updateLayerList();
+    redrawCanvas();
 }
 
 // Function to select a layer
@@ -435,7 +593,6 @@ canvas.addEventListener('mousedown', (e) => {
             console.log('Text bounds:', -width/2, width/2, -height/2, height/2);
             
             if (rotatedX >= -width/2 && rotatedX <= width/2 && rotatedY >= -height/2 && rotatedY <= height/2) {
-                console.log('Text layer selected:', layer.text);
                 selectedLayer = layer;
                 currentLayerIndex = i;
                 isDragging = true;
@@ -451,7 +608,6 @@ canvas.addEventListener('mousedown', (e) => {
             const handleSize = 10;
             if (rotatedX >= handleX - handleSize && rotatedX <= handleX + handleSize &&
                 rotatedY >= handleY - handleSize && rotatedY <= handleY + handleSize) {
-                console.log('Resize handle selected');
                 selectedLayer = layer;
                 currentLayerIndex = i;
                 isResizing = true;
@@ -464,7 +620,6 @@ canvas.addEventListener('mousedown', (e) => {
             // Check if clicking on rotation handle
             if (rotatedX >= -handleSize/2 && rotatedX <= handleSize/2 && 
                 rotatedY >= -height/2 - 20 - handleSize/2 && rotatedY <= -height/2 - 20 + handleSize/2) {
-                console.log('Rotation handle selected');
                 selectedLayer = layer;
                 currentLayerIndex = i;
                 isRotating = true;
@@ -477,7 +632,6 @@ canvas.addEventListener('mousedown', (e) => {
     }
 
     if (!found) {
-        console.log('No text layer selected');
         selectedLayer = null;
         currentLayerIndex = -1;
     }
@@ -495,11 +649,9 @@ canvas.addEventListener('mousemove', (e) => {
     const mouseY = e.clientY - rect.top;
 
     if (isDragging) {
-        console.log('Dragging');
         selectedLayer.x += (mouseX - lastMouseX);
         selectedLayer.y += (mouseY - lastMouseY);
     } else if (isResizing) {
-        console.log('Resizing');
         const localMouseX = mouseX - (panelX + selectedLayer.x);
         const localMouseY = mouseY - (panelY + selectedLayer.y);
         const currentMouseDistance = Math.sqrt(localMouseX * localMouseX + localMouseY * localMouseY);
@@ -510,7 +662,6 @@ canvas.addEventListener('mousemove', (e) => {
         // Clamp the new font size
         newFontSize = Math.max(MIN_FONT_SIZE, Math.min(MAX_FONT_SIZE, newFontSize));
         selectedLayer.fontSize = newFontSize;
-        console.log('Resizing. New font size:', newFontSize);
     } else if (isRotating) {
         console.log('Rotating');
         const dx = mouseX - (panelX + selectedLayer.x);
@@ -664,9 +815,15 @@ window.addEventListener('resize', () => {
     redrawCanvas();
 });
 
+document.addEventListener('DOMContentLoaded', addShapeButtonListeners);
+
 // Add event listeners for buttons
 document.getElementById('lineButton').addEventListener('click', createLayer);
 document.getElementById('textButton').addEventListener('click', createTextLayer);
+document.getElementById('rectangleButton').addEventListener('click', () => createShapeLayer('rectangle'));
+document.getElementById('circleButton').addEventListener('click', () => createShapeLayer('circle'));
 document.getElementById('shuffleButton').addEventListener('click', shuffleColors);
 document.getElementById('saveButton').addEventListener('click', saveDesign);
 document.getElementById('resetButton').addEventListener('click', resetDesign);
+document.getElementById('undoButton').addEventListener('click', undo);
+document.getElementById('redoButton').addEventListener('click', redo);
