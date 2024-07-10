@@ -208,19 +208,48 @@ function drawPanel() {
     ctx.strokeRect(panelX, panelY, panelWidth, panelHeight);
 }
 
+// Add a function to draw a star
+function drawStar(ctx, cx, cy, spikes, outerRadius, innerRadius) {
+    let rot = Math.PI / 2 * 3;
+    let x = cx;
+    let y = cy;
+    let step = Math.PI / spikes;
+
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - outerRadius);
+    for (let i = 0; i < spikes; i++) {
+        x = cx + Math.cos(rot) * outerRadius;
+        y = cy + Math.sin(rot) * outerRadius;
+        ctx.lineTo(x, y);
+        rot += step;
+
+        x = cx + Math.cos(rot) * innerRadius;
+        y = cy + Math.sin(rot) * innerRadius;
+        ctx.lineTo(x, y);
+        rot += step;
+    }
+    ctx.lineTo(cx, cy - outerRadius);
+    ctx.closePath();
+}
+
 function drawShape(layer) {
     ctx.save();
     ctx.translate(panelX + layer.x, panelY + layer.y);
     ctx.rotate(layer.rotation);
 
-    ctx.fillStyle = layer.color;
     if (layer.fillPattern === 'solid') {
-        // Use the current fillStyle
+        ctx.fillStyle = layer.color;
     } else if (layer.fillPattern === 'stripes') {
         const pattern = ctx.createPattern(createStripesPattern(), 'repeat');
         ctx.fillStyle = pattern;
     } else if (layer.fillPattern === 'dots') {
         const pattern = ctx.createPattern(createDotsPattern(), 'repeat');
+        ctx.fillStyle = pattern;
+    } else if (layer.fillPattern === 'checkerboard') {
+        const pattern = ctx.createPattern(createCheckerboardPattern(20, layer.color, 'white'), 'repeat');
+        ctx.fillStyle = pattern;
+    } else if (layer.fillPattern === 'herringbone') {
+        const pattern = ctx.createPattern(createHerringbonePattern(20, layer.color, 'white'), 'repeat');
         ctx.fillStyle = pattern;
     }
 
@@ -230,18 +259,40 @@ function drawShape(layer) {
         ctx.beginPath();
         ctx.arc(0, 0, layer.width / 2, 0, Math.PI * 2);
         ctx.fill();
-    } else if (layer.shapeType === 'triangle') {
-        ctx.beginPath();
-        ctx.moveTo(0, -layer.height / 2);
-        ctx.lineTo(layer.width / 2, layer.height / 2);
-        ctx.lineTo(-layer.width / 2, layer.height / 2);
-        ctx.closePath();
+    } else if (layer.shapeType === 'star') {
+        drawStar(ctx, 0, 0, 5, layer.width / 2, layer.width / 4);
         ctx.fill();
+    }
+
+    // Draw selection outline if this is the selected layer
+    if (layer === selectedLayer) {
+        ctx.strokeStyle = 'blue';
+        ctx.lineWidth = 2;
+        if (layer.shapeType === 'rectangle') {
+            ctx.strokeRect(-layer.width / 2, -layer.height / 2, layer.width, layer.height);
+        } else if (layer.shapeType === 'circle') {
+            ctx.beginPath();
+            ctx.arc(0, 0, layer.width / 2, 0, Math.PI * 2);
+            ctx.stroke();
+        } else if (layer.shapeType === 'star') {
+            drawStar(ctx, 0, 0, 5, layer.width / 2, layer.width / 4);
+            ctx.stroke();
+        }
+        
+        // Draw resize handle
+        ctx.fillStyle = 'blue';
+        ctx.fillRect(layer.width / 2 - 5, layer.height / 2 - 5, 10, 10);
+        
+        // Draw rotation handle
+        ctx.beginPath();
+        ctx.moveTo(0, -layer.height / 2 - 20);
+        ctx.lineTo(0, -layer.height / 2);
+        ctx.stroke();
+        ctx.fillRect(-5, -layer.height / 2 - 25, 10, 10);
     }
 
     ctx.restore();
 }
-
 function createStripesPattern() {
     const patternCanvas = document.createElement('canvas');
     patternCanvas.width = 10;
@@ -306,6 +357,55 @@ function drawLines(layer) {
     ctx.restore();
 }
 
+function createCheckerboardPattern(size = 20, color1 = 'white', color2 = 'black') {
+    const patternCanvas = document.createElement('canvas');
+    patternCanvas.width = size * 2;
+    patternCanvas.height = size * 2;
+    const patternCtx = patternCanvas.getContext('2d');
+    
+    patternCtx.fillStyle = color1;
+    patternCtx.fillRect(0, 0, size * 2, size * 2);
+    
+    patternCtx.fillStyle = color2;
+    patternCtx.fillRect(0, 0, size, size);
+    patternCtx.fillRect(size, size, size, size);
+    
+    return patternCanvas;
+}
+
+function createHerringbonePattern(size = 20, color1 = 'white', color2 = 'black') {
+    const patternCanvas = document.createElement('canvas');
+    patternCanvas.width = size * 4;
+    patternCanvas.height = size * 4;
+    const patternCtx = patternCanvas.getContext('2d');
+    
+    patternCtx.fillStyle = color1;
+    patternCtx.fillRect(0, 0, size * 4, size * 4);
+    
+    patternCtx.fillStyle = color2;
+    for (let i = 0; i < 4; i++) {
+        patternCtx.beginPath();
+        patternCtx.moveTo(i * size, 0);
+        patternCtx.lineTo((i + 1) * size, size);
+        patternCtx.lineTo((i + 1) * size, 0);
+        patternCtx.fill();
+        
+        patternCtx.beginPath();
+        patternCtx.moveTo(i * size, size * 2);
+        patternCtx.lineTo((i + 1) * size, size * 3);
+        patternCtx.lineTo((i + 1) * size, size * 2);
+        patternCtx.fill();
+        
+        patternCtx.beginPath();
+        patternCtx.moveTo(i * size, size * 4);
+        patternCtx.lineTo((i + 1) * size, size * 3);
+        patternCtx.lineTo(i * size, size * 3);
+        patternCtx.fill();
+    }
+    
+    return patternCanvas;
+}
+
 // Function to draw text
 function drawText(layer) {
     ctx.save();
@@ -355,9 +455,11 @@ function createShapeLayer(type) {
         fillPattern: 'solid',
         visible: true
     };
+
     layers.push(newLayer);
     currentLayerIndex = layers.length - 1;
     selectedLayer = newLayer;
+    
     updateLayerList();
     redrawCanvas();
     saveState();
@@ -378,6 +480,14 @@ function createLayer() {
     selectedLayer = newLayer;
     updateLayerList();
     redrawCanvas();
+}
+
+function changeFillPattern(pattern) {
+    if (selectedLayer && selectedLayer.type === 'shape') {
+        selectedLayer.fillPattern = pattern;
+        redrawCanvas();
+        saveState();
+    }
 }
 
 // Function to create a new text layer
@@ -570,63 +680,105 @@ canvas.addEventListener('mousedown', (e) => {
     const mouseX = e.clientX - rect.left;
     const mouseY = e.clientY - rect.top;
 
-    console.log('Mouse down at:', mouseX, mouseY);
-
     let found = false;
     for (let i = layers.length - 1; i >= 0; i--) {
         const layer = layers[i];
-        if (layer.type === 'text' && layer.visible) {
-            const localMouseX = mouseX - (panelX + layer.x);
-            const localMouseY = mouseY - (panelY + layer.y);
-            const rotatedX = localMouseX * Math.cos(-layer.rotation) - localMouseY * Math.sin(-layer.rotation);
-            const rotatedY = localMouseX * Math.sin(-layer.rotation) + localMouseY * Math.cos(-layer.rotation);
+        if (layer.visible) {
+            const localMouseX = mouseX - panelX;
+            const localMouseY = mouseY - panelY;
             
-            ctx.save();
-            ctx.font = `${layer.fontSize}px ${layer.font}`;
-            const metrics = ctx.measureText(layer.text);
-            const width = metrics.width;
-            const height = layer.fontSize;
-            ctx.restore();
+            if (layer.type === 'text') {
+                ctx.save();
+                ctx.font = `${layer.fontSize}px ${layer.font}`;
+                const metrics = ctx.measureText(layer.text);
+                const width = metrics.width;
+                const height = layer.fontSize;
+                ctx.restore();
 
-            console.log('Checking text layer:', layer.text, 'at', layer.x, layer.y);
-            console.log('Rotated mouse position:', rotatedX, rotatedY);
-            console.log('Text bounds:', -width/2, width/2, -height/2, height/2);
-            
-            if (rotatedX >= -width/2 && rotatedX <= width/2 && rotatedY >= -height/2 && rotatedY <= height/2) {
-                selectedLayer = layer;
-                currentLayerIndex = i;
-                isDragging = true;
-                lastMouseX = mouseX;
-                lastMouseY = mouseY;
-                found = true;
-                break;
-            }
-            
-            // Check if clicking on resize handle
-            const handleX = width / 2;
-            const handleY = height / 2;
-            const handleSize = 10;
-            if (rotatedX >= handleX - handleSize && rotatedX <= handleX + handleSize &&
-                rotatedY >= handleY - handleSize && rotatedY <= handleY + handleSize) {
-                selectedLayer = layer;
-                currentLayerIndex = i;
-                isResizing = true;
-                initialFontSize = layer.fontSize;
-                initialMouseDistance = Math.sqrt(localMouseX * localMouseX + localMouseY * localMouseY);
-                found = true;
-                break;
-            }
-            
-            // Check if clicking on rotation handle
-            if (rotatedX >= -handleSize/2 && rotatedX <= handleSize/2 && 
-                rotatedY >= -height/2 - 20 - handleSize/2 && rotatedY <= -height/2 - 20 + handleSize/2) {
-                selectedLayer = layer;
-                currentLayerIndex = i;
-                isRotating = true;
-                lastMouseX = mouseX;
-                lastMouseY = mouseY;
-                found = true;
-                break;
+                const dx = localMouseX - layer.x;
+                const dy = localMouseY - layer.y;
+                const rotatedX = dx * Math.cos(-layer.rotation) - dy * Math.sin(-layer.rotation);
+                const rotatedY = dx * Math.sin(-layer.rotation) + dy * Math.cos(-layer.rotation);
+
+                if (rotatedX >= -width/2 && rotatedX <= width/2 && rotatedY >= -height/2 && rotatedY <= height/2) {
+                    selectedLayer = layer;
+                    currentLayerIndex = i;
+                    isDragging = true;
+                    lastMouseX = localMouseX;
+                    lastMouseY = localMouseY;
+                    found = true;
+                    break;
+                }
+
+                // Check if clicking on resize handle
+                const handleSize = 10;
+                if (rotatedX >= width/2 - handleSize/2 && rotatedX <= width/2 + handleSize/2 &&
+                    rotatedY >= height/2 - handleSize/2 && rotatedY <= height/2 + handleSize/2) {
+                    selectedLayer = layer;
+                    currentLayerIndex = i;
+                    isResizing = true;
+                    initialFontSize = layer.fontSize;
+                    initialMouseDistance = Math.sqrt(dx * dx + dy * dy);
+                    found = true;
+                    break;
+                }
+
+                // Check if clicking on rotation handle
+                if (rotatedX >= -handleSize/2 && rotatedX <= handleSize/2 && 
+                    rotatedY >= -height/2 - 20 - handleSize/2 && rotatedY <= -height/2 - 20 + handleSize/2) {
+                    selectedLayer = layer;
+                    currentLayerIndex = i;
+                    isRotating = true;
+                    lastMouseX = localMouseX;
+                    lastMouseY = localMouseY;
+                    found = true;
+                    break;
+                }
+            } else if (layer.type === 'shape') {
+                const dx = localMouseX - layer.x;
+                const dy = localMouseY - layer.y;
+                const rotatedDX = dx * Math.cos(-layer.rotation) + dy * Math.sin(-layer.rotation);
+                const rotatedDY = -dx * Math.sin(-layer.rotation) + dy * Math.cos(-layer.rotation);
+
+                let isInside = false;
+                if (layer.shapeType === 'rectangle' || layer.shapeType === 'triangle') {
+                    isInside = Math.abs(rotatedDX) <= layer.width / 2 && Math.abs(rotatedDY) <= layer.height / 2;
+                } else if (layer.shapeType === 'circle') {
+                    isInside = rotatedDX * rotatedDX + rotatedDY * rotatedDY <= (layer.width / 2) * (layer.width / 2);
+                }
+
+                if (isInside) {
+                    selectedLayer = layer;
+                    currentLayerIndex = i;
+                    isDragging = true;
+                    lastMouseX = localMouseX;
+                    lastMouseY = localMouseY;
+                    found = true;
+                    break;
+                }
+
+                // Check if clicking on resize handle
+                const handleSize = 10;
+                if (Math.abs(rotatedDX - layer.width / 2) < handleSize && Math.abs(rotatedDY - layer.height / 2) < handleSize) {
+                    selectedLayer = layer;
+                    currentLayerIndex = i;
+                    isResizing = true;
+                    lastMouseX = localMouseX;
+                    lastMouseY = localMouseY;
+                    found = true;
+                    break;
+                }
+
+                // Check if clicking on rotation handle
+                if (Math.abs(rotatedDX) < handleSize && Math.abs(rotatedDY + layer.height / 2 + 20) < handleSize) {
+                    selectedLayer = layer;
+                    currentLayerIndex = i;
+                    isRotating = true;
+                    lastMouseX = localMouseX;
+                    lastMouseY = localMouseY;
+                    found = true;
+                    break;
+                }
             }
         }
     }
@@ -642,31 +794,35 @@ canvas.addEventListener('mousedown', (e) => {
 
 // Function to handle mouse move events
 canvas.addEventListener('mousemove', (e) => {
-    if (!selectedLayer || selectedLayer.type !== 'text') return;
-    
+    if (!selectedLayer) return;
+
     const rect = canvas.getBoundingClientRect();
-    const mouseX = e.clientX - rect.left;
-    const mouseY = e.clientY - rect.top;
+    const mouseX = e.clientX - rect.left - panelX;
+    const mouseY = e.clientY - rect.top - panelY;
 
     if (isDragging) {
         selectedLayer.x += (mouseX - lastMouseX);
         selectedLayer.y += (mouseY - lastMouseY);
     } else if (isResizing) {
-        const localMouseX = mouseX - (panelX + selectedLayer.x);
-        const localMouseY = mouseY - (panelY + selectedLayer.y);
-        const currentMouseDistance = Math.sqrt(localMouseX * localMouseX + localMouseY * localMouseY);
-        
-        const scaleFactor = currentMouseDistance / initialMouseDistance;
-        let newFontSize = initialFontSize * scaleFactor;
-
-        // Clamp the new font size
-        newFontSize = Math.max(MIN_FONT_SIZE, Math.min(MAX_FONT_SIZE, newFontSize));
-        selectedLayer.fontSize = newFontSize;
+        if (selectedLayer.type === 'text') {
+            const dx = mouseX - selectedLayer.x;
+            const dy = mouseY - selectedLayer.y;
+            const currentMouseDistance = Math.sqrt(dx * dx + dy * dy);
+            const scaleFactor = currentMouseDistance / initialMouseDistance;
+            let newFontSize = initialFontSize * scaleFactor;
+            newFontSize = Math.max(MIN_FONT_SIZE, Math.min(MAX_FONT_SIZE, newFontSize));
+            selectedLayer.fontSize = newFontSize;
+        } else if (selectedLayer.type === 'shape') {
+            const dx = mouseX - selectedLayer.x;
+            const dy = mouseY - selectedLayer.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            selectedLayer.width = distance * 2;
+            selectedLayer.height = distance * 2;
+        }
     } else if (isRotating) {
-        console.log('Rotating');
-        const dx = mouseX - (panelX + selectedLayer.x);
-        const dy = mouseY - (panelY + selectedLayer.y);
-        selectedLayer.rotation = Math.atan2(dy, dx) + Math.PI/2;
+        const dx = mouseX - selectedLayer.x;
+        const dy = mouseY - selectedLayer.y;
+        selectedLayer.rotation = Math.atan2(dy, dx) + Math.PI / 2;
     }
 
     lastMouseX = mouseX;
@@ -674,17 +830,16 @@ canvas.addEventListener('mousemove', (e) => {
     redrawCanvas();
 });
 
-// Function to handle mouse up events
 canvas.addEventListener('mouseup', () => {
-    console.log('Mouse up');
     isDragging = false;
     isResizing = false;
     isRotating = false;
+    if (selectedLayer) {
+        saveState();
+    }
 });
 
-// Function to handle mouse leave events
 canvas.addEventListener('mouseleave', () => {
-    console.log('Mouse left canvas');
     isDragging = false;
     isResizing = false;
     isRotating = false;
@@ -815,15 +970,22 @@ window.addEventListener('resize', () => {
     redrawCanvas();
 });
 
-document.addEventListener('DOMContentLoaded', addShapeButtonListeners);
+// THIS ONE DELETED document.addEventListener('DOMContentLoaded', addShapeButtonListeners);
+
+
 
 // Add event listeners for buttons
+
+document.addEventListener('DOMContentLoaded', function() {
 document.getElementById('lineButton').addEventListener('click', createLayer);
 document.getElementById('textButton').addEventListener('click', createTextLayer);
 document.getElementById('rectangleButton').addEventListener('click', () => createShapeLayer('rectangle'));
 document.getElementById('circleButton').addEventListener('click', () => createShapeLayer('circle'));
+document.getElementById('starButton').addEventListener('click', () => createShapeLayer('star'));
 document.getElementById('shuffleButton').addEventListener('click', shuffleColors);
 document.getElementById('saveButton').addEventListener('click', saveDesign);
 document.getElementById('resetButton').addEventListener('click', resetDesign);
 document.getElementById('undoButton').addEventListener('click', undo);
 document.getElementById('redoButton').addEventListener('click', redo);
+
+});
